@@ -289,58 +289,62 @@ Paste the content inside the file
 ```
 ---
 
-- name: Start installing Jenkins pre-requisites before installing Jenkins
+
+- name: Install Jenkins (Latest Jenkins Repo & GPG Key)
   hosts: jenkins-server
   become: yes
-  become_method: sudo
-  gather_facts: no
+  gather_facts: yes
 
   tasks:
 
-  - name: Update apt repository with latest packages
-    apt:
-      update_cache: yes
-      upgrade: yes
+    - name: Update apt repository
+      apt:
+        update_cache: yes
 
-  - name: Installing jdk17 in Jenkins server
-    apt:
-      name: openjdk-17-jdk
-      update_cache: yes
-    become: yes
+    - name: Install JDK 17
+      apt:
+        name: openjdk-17-jdk
+        state: present
 
-  - name: Installing jenkins apt repository key
-    apt_key:
-      url: https://pkg.jenkins.io/debian/jenkins.io-2023.key
-      state: present
-    become: yes
+    - name: Download Jenkins GPG key (2023+)
+      ansible.builtin.get_url:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        dest: /usr/share/keyrings/jenkins-keyring.asc
+        mode: '0644'
 
-  - name: Configuring the apt repository
-    apt_repository:
-      repo: deb https://pkg.jenkins.io/debian binary/
-      filename: /etc/apt/sources.list.d/jenkins.list
-      state: present
-    become: yes
+    - name: Add Jenkins APT repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+        filename: jenkins
 
-  - name: Update apt-get repository with "apt-get update"
-    apt:
-      update_cache: yes
+    - name: Update apt cache after adding Jenkins repo
+      apt:
+        update_cache: yes
 
-  - name: Finally, its time to install Jenkins
-    apt: name=jenkins update_cache=yes
-    become: yes
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
 
-  - name: Jenkins is installed. Lets start 'Jenkins' now!
-    service: name=jenkins state=started
+    - name: Start and enable Jenkins service
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
 
+    - name: Wait for Jenkins initial admin password file
+      wait_for:
+        path: /var/lib/jenkins/secrets/initialAdminPassword
+        state: present
+        timeout: 60
 
-  - name: Wait until the file /var/lib/jenkins/secrets/initialAdminPassword is present before continuing
-    wait_for:
-      path: /var/lib/jenkins/secrets/initialAdminPassword
-  - name: You can find Jenkins admin password under 'debug'
-    command: cat /var/lib/jenkins/secrets/initialAdminPassword
-    register: out
-  - debug: var=out.stdout_lines
+    - name: Display Jenkins admin password
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password
 
+    - debug:
+        msg: "Jenkins Initial Admin Password: {{ jenkins_password.stdout }}"
 
 - name: Start the Docker installation steps
   hosts: docker-server
